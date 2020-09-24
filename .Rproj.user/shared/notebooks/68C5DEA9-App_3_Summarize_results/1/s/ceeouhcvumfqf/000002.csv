@@ -1,0 +1,12 @@
+"0","## covariate(s)"
+"0","dat_cvrs <- read_csv(file.path(datadir, ""skagit_chinook_covars.csv""))"
+"2","Parsed with column specification:
+cols(
+  year = [32mcol_double()[39m,
+  flow_wtr = [32mcol_double()[39m,
+  flow_sum = [32mcol_double()[39m,
+  NPGO = [32mcol_double()[39m
+)
+"
+"0","## total number of covariates"
+"0","n_cov <- dim(dat_cvrs)[2] - 1"

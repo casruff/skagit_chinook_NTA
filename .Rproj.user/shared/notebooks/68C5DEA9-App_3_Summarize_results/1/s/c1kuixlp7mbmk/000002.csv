@@ -1,0 +1,16 @@
+"0","## escapement"
+"0","dat_esc <- read_csv(file.path(datadir, fn_esc))"
+"2","Parsed with column specification:
+cols(
+  year = [32mcol_double()[39m,
+  escapement = [32mcol_double()[39m
+)
+"
+"0","##"
+"0","dat_esc <- dat_esc[which(dat_esc$year %in% seq(yr_frst,yr_last,1)),]"
+"0","## years of data"
+"0","dat_yrs <- dat_esc$year"
+"0","## number of years of data"
+"0","n_yrs <- length(dat_yrs)"
+"0","## log of escapement"
+"0","ln_dat_esc <- c(log(dat_esc$escapement),rep(NA,n_fore))"

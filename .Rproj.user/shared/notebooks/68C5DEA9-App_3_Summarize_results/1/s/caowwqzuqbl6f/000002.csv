@@ -1,0 +1,12 @@
+"0","## harvest"
+"0","dat_harv <- read_csv(file.path(datadir, fn_harv))"
+"2","Parsed with column specification:
+cols(
+  year = [32mcol_double()[39m,
+  tot_aeq = [32mcol_double()[39m
+)
+"
+"0","##"
+"0","dat_harv <- dat_harv[which(dat_harv$year %in% seq(yr_frst,yr_last,1)),]"
+"0","## drop year col & first age_max rows"
+"0","dat_harv <- c(dat_harv$tot_aeq, rep(0,n_fore))"

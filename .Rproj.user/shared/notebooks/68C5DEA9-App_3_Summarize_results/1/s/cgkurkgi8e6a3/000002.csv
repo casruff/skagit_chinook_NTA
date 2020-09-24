@@ -1,0 +1,2 @@
+"0","## results"
+"0","mod_res <- do.call(""rbind"", best_fit)"

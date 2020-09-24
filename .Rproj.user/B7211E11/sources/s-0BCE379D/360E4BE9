@@ -1,0 +1,24 @@
+{
+    "id": "360E4BE9",
+    "path": "~/Projects/RWorkflow/skagit_chinook_NTA/analysis/App_3_Summarize_results.R",
+    "project_path": "analysis/App_3_Summarize_results.R",
+    "type": "r_source",
+    "hash": "3624724979",
+    "contents": "",
+    "dirty": false,
+    "created": 1600964483285.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "cursorPosition": "315,0",
+        "scrollLine": "307"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1600970315,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1600970315786,
+    "read_only": false,
+    "read_only_alternatives": []
+}

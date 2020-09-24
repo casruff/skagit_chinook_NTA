@@ -1,0 +1,2 @@
+"0","## write covariates to a file"
+"0","write_csv(dat_cvrs, file.path(datadir, ""skagit_chinook_covars.csv""))"

@@ -1,0 +1,21 @@
+"0","## number of years of data"
+"0","n_yrs <- yr_last - yr_frst + 1"
+"0","## NPGO data for years of interest"
+"0","dat_NPGO <- read_table(url_NPGO, col_names = FALSE,"
+"0","                       skip = hdr_NPGO + (yr_frst-1950)*12,"
+"0","                       n_max = (n_yrs)*12-5)"
+"2","Parsed with column specification:
+cols(
+  X1 = [32mcol_double()[39m,
+  X2 = [32mcol_double()[39m,
+  X3 = [32mcol_double()[39m
+)
+"
+"0","colnames(dat_NPGO) <- c(""year"",""month"",""NPGO"")"
+"0","## select only years of interest indexed by brood year "
+"0","dat_NPGO <- dat_NPGO[dat_NPGO$year >= yr_frst+marine_lag &"
+"0","                     dat_NPGO$year <= yr_last-age_min+n_fore+marine_lag,]"
+"0","dat_NPGO <- aggregate(dat_NPGO$NPGO, by = list(year = dat_NPGO$year), mean)"
+"0","dat_NPGO <- data.frame(year = seq(yr_frst,yr_last-age_min+n_fore),"
+"0","                       NPGO = dat_NPGO[,2])"
+"0","dat_NPGO[,""NPGO""] <- round(dat_NPGO[,""NPGO""], 2)"

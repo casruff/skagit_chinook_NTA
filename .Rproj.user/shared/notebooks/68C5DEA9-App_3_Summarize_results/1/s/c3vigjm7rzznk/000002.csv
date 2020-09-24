@@ -1,0 +1,7 @@
+"0","## 1. file with escapement data"
+"0","## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr"
+"0","fn_esc <- ""skagit_sfck_esc.csv"""
+"0",""
+"0","## 2. file with harvest data"
+"0","## [n_yrs x 2] matrix of obs catch; 1st col is calendar yr"
+"0","fn_harv <- ""skagit_sf_chinook_aeq.csv"""

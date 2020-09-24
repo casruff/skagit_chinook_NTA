@@ -1,0 +1,6 @@
+"0","polygon(c(t_idx_f, rev(t_idx_f)), c(p_dat[3,], rev(p_dat[1,])),
+        col = clr, border = NA)
+"
+"2","Error in polygon(c(t_idx_f, rev(t_idx_f)), c(p_dat[3, ], rev(p_dat[1,  : 
+  plot.new has not been called yet
+"

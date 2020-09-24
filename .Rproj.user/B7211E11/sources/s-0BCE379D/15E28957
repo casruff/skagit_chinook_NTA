@@ -1,0 +1,24 @@
+{
+    "id": "15E28957",
+    "path": "~/Projects/RWorkflow/skagit_chinook_NTA/analysis/old_models/Skagit_Chinook_SR_SSM_SFCK.Rmd",
+    "project_path": "analysis/old_models/Skagit_Chinook_SR_SSM_SFCK.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1600964722824.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "cursorPosition": "1096,0",
+        "scrollLine": "1072"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1600299354,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1600299354,
+    "read_only": false,
+    "read_only_alternatives": []
+}

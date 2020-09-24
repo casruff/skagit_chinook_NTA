@@ -1,0 +1,8 @@
+"0","## combine covariates"
+"0","dat_cvrs <- Reduce(function(...) merge(..., all = TRUE),"
+"0","                   list(dat_flow_wtr,"
+"0","                        dat_flow_sum,"
+"0","                        dat_NPGO"
+"0","                      ))"
+"0","## check table of covariates"
+"0","head(dat_cvrs)"

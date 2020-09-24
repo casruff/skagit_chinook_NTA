@@ -1,0 +1,1 @@
+{"frames":[{"func":"polygon(c(t_idx_f, rev(t_idx_f)), c(p_dat[3, ], rev(p_dat[1, \n    ])), col = clr, border = NA)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error in polygon(c(t_idx_f, rev(t_idx_f)), c(p_dat[3, ], rev(p_dat[1,  : \n  plot.new has not been called yet\n"}

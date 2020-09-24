@@ -1,0 +1,1 @@
+"0","best_fit <- readRDS(file.path(savedir, ""fit_ricker_cov.rds""))"
