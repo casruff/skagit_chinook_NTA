@@ -661,6 +661,15 @@ hist(aer, breaks = seq(0, 40)/40,
      main = "", ylab = "")
 ```
 
+Here is a summary of estimated reference points
+
+```{r table_ref_pts }
+
+tbl_refpt_smry <- apply(ref_pts,2,quantile,CI_vec)
+print(tbl_refpt_smry,digits=3,quote=FALSE,justify="right")
+```
+
+
 ```{r, echo=FALSE}
 cnt <- cnt + 1
 ```

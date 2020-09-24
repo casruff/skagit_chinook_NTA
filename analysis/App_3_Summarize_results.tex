@@ -849,6 +849,22 @@ Here are a number of management reference points.
 
 \begin{center}\includegraphics{App_3_Summarize_results_files/figure-latex/fig_6_ref_pts-1} \end{center}
 
+Here is a summary of estimated reference points
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tbl_refpt_smry <-}\StringTok{ }\KeywordTok{apply}\NormalTok{(ref_pts,}\DecValTok{2}\NormalTok{,quantile,CI_vec)}
+\KeywordTok{print}\NormalTok{(tbl_refpt_smry,}\DataTypeTok{digits=}\DecValTok{3}\NormalTok{,}\DataTypeTok{quote=}\OtherTok{FALSE}\NormalTok{,}\DataTypeTok{justify=}\StringTok{"right"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##         MSY  Smsy  Umsy  Umax
+## 2.5%   7924  7066 0.366 0.561
+## 50%   10391 10726 0.484 0.682
+## 97.5% 14686 19410 0.628 0.801
+\end{verbatim}
+
 Figure 6: Plots of (a) the probability that a given number of spawners
 produces average yields achieving 95\%, 85\%, or 75\% of the estimated
 maximum sustainable yield (MSY); and (b) the cumulative probability of
