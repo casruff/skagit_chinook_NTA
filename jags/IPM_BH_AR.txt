@@ -5,19 +5,24 @@ model {
   ##--------
   ## PRIORS
   ##--------
-  ## alpha = exp(a) = intrinsic productivity
-  alpha ~ dnorm(0,0.001) T(0,);
-  mu_BH_a <- log(alpha);
-  E_BH_a <- mu_BH_a + sigma_r/(2 - 2*phi^2);
   
-  ## strength of dens depend
+  ## 1. adult to smolt productivity
+  pas ~ dnorm(0,0.001) T(0,);
+  mu_pas <- log(pas)
+  
+  ## 2. smolt to adult recruit productivity
+  psa ~ dnorm(0,0.001) T(0,);
+  mu_BH_psa <- log(psa)
+  E_BH_psa <- mu_BH_psa + sigma_r/(2 - 2*phi^2);
+  
+  ## strength of dens depend for smolt to adult stage
   beta_inv ~ dnorm(0, 1e-9) T(0,);
   beta <- 1/beta_inv;
   
   ## AR(1) coef for proc errors
   phi ~ dunif(-0.999,0.999);
   
-  ## process variance for recruits model
+  ## process variance for adult recruits model
   sigma_r ~ dnorm(0, 2e-2) T(0,);
   tau_r <- 1/sigma_r;
   
@@ -25,8 +30,12 @@ model {
   innov_1 ~ dnorm(0,tau_r*(1-phi*phi));
   
   ## obs variance for spawners
-  tau_s <- 1/sigma_s;
-  sigma_s ~ dnorm(0, 0.001) T(0,);
+  tau_sp <- 1/sigma_sp;
+  sigma_sp ~ dnorm(0, 0.001) T(0,);
+  
+  ## obs variance for spawners
+  tau_sm <- 1/sigma_sm;
+  sigma_sm ~ dnorm(0, 0.001) T(0,);
   
   ## unprojectable early recruits;
   ## hyper mean across all popns
@@ -61,16 +70,18 @@ model {
   ## LIKELIHOOD
   ##------------
   ## 1st brood yr requires different innovation
-  ## predicted recruits in BY t
-  ln_BH_a[1] <- mu_BH_a; 
-  E_ln_Rec[1] <- ln_BH_a[1] + ln_Sp[1] - log(1 + beta*Sp[1]) + phi*innov_1;
+  ## predicted adult recruits in BY t. Modelling as density dependent relationship given that         ## estuarine rearing stage is density dependent. 
+  
+  ln_BH_psa[1] <- mu_BH_psa; 
+  E_ln_Rec[1] <- ln_BH_psa[1] + E_ln_smolt[1] - log(1 + beta*smolt[1]) + phi*innov_1;
   tot_ln_Rec[1] ~ dnorm(E_ln_Rec[1],tau_r);
   res_ln_Rec[1] <- tot_ln_Rec[1] - E_ln_Rec[1];
+  
   ## median of total recruits
   tot_Rec[1] <- exp(tot_ln_Rec[1]);
   
-  ## R/S
-  ln_RS[1] <- tot_ln_Rec[1] - ln_Sp[1];
+  ## survival = Rec/Smolt
+  ln_RS[1] <- tot_ln_Rec[1] - E_ln_smolt[1];
   
   ## brood-yr recruits by age
   for(a in 1:A) {
@@ -79,15 +90,17 @@ model {
   
   ## brood years 2:(n_yrs-age_min)
   for(t in 2:(n_yrs-age_min+n_fore)) {
-    ## predicted recruits in BY t
-    ln_BH_a[t] <- mu_BH_a; 
-    E_ln_Rec[t] <- ln_BH_a[t] + ln_Sp[t] - log(1 + beta*Sp[t]) + phi*res_ln_Rec[t-1];
-    tot_ln_Rec[t] ~ dnorm(E_ln_Rec[t],tau_r);
-    res_ln_Rec[t] <- tot_ln_Rec[t] - E_ln_Rec[t];
-    ## median of total recruits
-    tot_Rec[t] <- exp(tot_ln_Rec[t]);
-    ## R/S
-    ln_RS[t] <- tot_ln_Rec[t] - ln_Sp[t];
+  
+  ## predicted adult recruits in BY t. Modelling as density dependent relationship given that         ## estuarine rearing stage is density dependent. 
+  ln_BH_psa[t] <- mu_BH_psa; 
+  E_ln_Rec[t] <- ln_BH_psa[t] + E_ln_smolt[t] - log(1 + beta*smolt[t]) + phi*res_ln_Rec[t-1];
+  tot_ln_Rec[t] ~ dnorm(E_ln_Rec[t],tau_r)
+  res_ln_Rec[t] <- tot_ln_Rec[t] - E_ln_Rec[t];
+  ## median of total recruits
+  tot_Rec[t] <- exp(tot_ln_Rec[t]);
+  
+  ## survival = Rec/Smolt
+  ln_RS[t] <- tot_ln_Rec[t] - E_ln_smolt[t];
     ## brood-yr recruits by age
     for(a in 1:A) {
       Rec[t,a] <- tot_Rec[t] * pi_vec[t,a];
@@ -136,7 +149,7 @@ model {
     lp_age[i] <- logdensity.multi(dat_age[i,1:A],age_v[i,1:A],dat_age[i,A+1]);
   }
   
-  ## get predicted calendar year spawners
+  ## get predicted calendar year spawners and smolts
   ## first cal yr is first brood yr
   for(t in 1:(n_yrs+n_fore)) {
     ## obs model for spawners
@@ -145,8 +158,23 @@ model {
     dat_harv[t] ~ dlnorm(log(est_harv[t]), 20);
     Sp[t] = tot_Run[t] - est_harv[t];
     ln_Sp[t] <- log(Sp[t]);
-    ln_dat_esc[t] ~ dnorm(ln_Sp[t], tau_s);
-    lp_esc[t] <- logdensity.norm(ln_dat_esc[t],ln_Sp[t], tau_s);
+    ln_dat_esc[t] ~ dnorm(ln_Sp[t], tau_sp);
+    lp_esc[t] <- logdensity.norm(ln_dat_esc[t],ln_Sp[t], tau_sp);
+    
+    ## obs model for smolts
+    ## predicted smolts in BY t
+    ## predicted recruits in BY t
+    ln_pas[t] <- mu_pas;
+    E_ln_smolt[t] <- ln_pas[t] + ln_Sp[t] 
+    smolt[t] <- exp(E_ln_smolt[t])
+    
+    ## observation  model for smolt production
+    ln_dat_smolt[t] ~ dnorm(E_ln_smolt[t], tau_sm);
+    lp_smolt[t] <- logdensity.norm(ln_dat_smolt[t],E_ln_smolt[t], tau_sm);
+    
+    ## survival = smolts/spawners
+    ln_ss[t] <- E_ln_smolt[t] - ln_Sp[t]
+    
   }
   
 } ## end model description

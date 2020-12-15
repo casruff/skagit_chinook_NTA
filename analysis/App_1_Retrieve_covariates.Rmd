@@ -45,7 +45,7 @@ We begin by supplying values for the following parameters, which we use for trim
 
 ```{r get_user_inputs}
 ## first & last years of fish data
-yr_frst <- 1992
+yr_frst <- 1993
 yr_last <- 2016
 
 ## min & max adult ages (years)

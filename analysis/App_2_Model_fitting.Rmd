@@ -92,7 +92,7 @@ We begin by supplying values for the following parameters, which we need for mod
 
 ```{r get_user_inputs}
 ## first & last years of fish data
-yr_frst <- 1992
+yr_frst <- 1993
 yr_last <- 2016
 
 ## min & max adult age classes
@@ -111,21 +111,26 @@ Rhat_thresh <- 1.1
 Next we specify the names of three necessary data files containing the following information:
  
  1. observed total number of adult spawners (escapement) by year;
- 2. observed age composition of adult spawners by year;
- 3. observed total harvest by year;
+ 2. observed total number of subyearling chinook smolts by year
+ 3. observed age composition of adult spawners by year;
+ 4. observed total harvest by year;
 
 ```{r get_filenames}
 ## 1. file with escapement data
 ## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr
-fn_esc <- "skagit_sfck_esc.csv"
+fn_esc <- "skagit_chinook_esc.csv"
 
-## 2. file with age comp data
+## 2. file with smolt data
+## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr
+fn_smolt <- "skagit_chinook_smolt.csv"
+
+## 3. file with age comp data
 ## [n_yrs x (1+A)]; 1st col is calendar yr
-fn_age <- "skagit_sfck_age.csv"
+fn_age <- "skagit_chinook_age.csv"
 
-## 3. file with harvest data
+## 4. file with harvest data
 ## [n_yrs x 2] matrix of obs catch; 1st col is calendar yr
-fn_harv <- "skagit_sf_chinook_aeq.csv"
+fn_harv <- "skagit_chinook_aeq.csv"
 ```
 
 # Loading the fish data
@@ -144,6 +149,19 @@ n_yrs <- length(dat_yrs)
 ## log of escapement
 ln_dat_esc <- c(log(dat_esc$escapement),rep(NA,n_fore))
 ```
+
+Next the smolt production data:
+
+```{r get_smolt_data}
+## subyearling smolt abundance
+dat_smolt <- read_csv(file.path(datadir, fn_smolt))
+##
+dat_smolt <- dat_smolt[which(dat_smolt$year %in% seq(yr_frst,yr_last,1)),]
+
+## log of subyearling smolt abundance
+ln_dat_smolt <- c(log(dat_esc$smolt),rep(NA,n_fore))
+```
+
 
 Next the age composition data:
 
@@ -543,23 +561,29 @@ model {
   ##--------
   ## PRIORS
   ##--------
-  ## alpha = exp(a) = intrinsic productivity
-  alpha ~ dnorm(0,0.01) T(0,);
-  mu_Rkr_a <- log(alpha);
-  E_Rkr_a <- mu_Rkr_a + sigma_r/(2 - 2*phi^2);
+  ## alpha_1 = exp(a) = intrinsic productivity for spawner_smolt transition
+  alpha_1 ~ dnorm(0,0.01) T(0,);
+  mu_Rkr_a_1 <- log(alpha);
+  # E_Rkr_a_1 <- mu_Rkr_a_1 + sigma_r/(2 - 2*phi^2);
   
-  ## strength of dens depend
+  ## alpha_2 = exp(a) = intrinsic productivity for smolt_adult transition
+  alpha_2 ~ dnorm(0,0.01) T(0,);
+  mu_Rkr_a_2 <- log(alpha);
+  E_Rkr_a_2 <- mu_Rkr_a_2 + sigma_r/(2 - 2*phi^2);
+  
+  
+  ## strength of dens depend for smolt to adult transition. 
   beta_inv ~ dnorm(0, 1e-9) T(0,);
   beta <- 1/beta_inv;
   
   ## covariate effects
   for(i in 1:n_cov) { gamma[i] ~ dnorm(0,0.01) }
 
-  ## AR(1) coef for proc errors
+  ## AR(1) coef for proc errors for smolt to adult life stage transition
   # phi ~ dunif(-0.999,0.999);
   phi <- 0;
   
-  ## process variance for recruits model
+  ## process variance for adult recruits model
   sigma_r ~ dnorm(0, 2e-2) T(0,);
   tau_r <- 1/sigma_r;
   
@@ -567,8 +591,12 @@ model {
   innov_1 ~ dnorm(0,tau_r*(1-phi*phi));
   
   ## obs variance for spawners
-  tau_s <- 1/sigma_s;
-  sigma_s ~ dnorm(0, 0.001) T(0,);
+  tau_spawn <- 1/sigma_spawn;
+  sigma_spawn ~ dnorm(0, 0.001) T(0,);
+  
+  ## obs variance for smolts
+  tau_smolt <- 1/sigma_smolt;
+  sigma_smolt ~ dnorm(0, 0.001) T(0,);
   
   ## maturity schedule
   ## unif vec for Dirch prior
