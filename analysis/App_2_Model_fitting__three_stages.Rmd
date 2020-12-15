@@ -1,0 +1,593 @@
+---
+title: "Appendix S2. Model definitions, model fitting, and model evaluation."
+subtitle: Supporting information for Skagit Chinook IPM
+output:
+  pdf_document:
+    highlight: haddock
+    toc: yes
+    number_sections: true
+    toc_depth: '3'
+fontsize: 11pt
+geometry: margin=1in
+---
+
+```{r set_options, echo = FALSE, message = FALSE}
+options(width = 100)
+knitr::opts_chunk$set(message = FALSE)
+set.seed(123)
+if(file.exists("cnt_time.txt")) {
+  file.remove("cnt_time.txt")
+}
+mod_names <- data.frame(mod = rep(c("Ricker", "Beverton-Holt"), 2),
+                        cov = rep(c("without", "with"), 2))
+```
+
+\vspace{0.2in}
+
+This is version `r paste0('0.',format(Sys.time(), '%y.%m.%d'))`.
+
+# Background
+
+This appendix describes how we fit the models and evaluated their relative performances. It demonstrates how to load the fish data and environmenal covariates, specify the different models in the __JAGS__ software, and fit each one. 
+
+All analyses require the [R software](https://cran.r-project.org/) (v3.4.3 or later) for data retrieval, data processing, and summarizing model results, and the [JAGS software](http://mcmc-jags.sourceforge.net/) (v4.2.0) for Markov chain Monte Carlo (MCMC) simulation. Please note that some of the __R__ code below may not work with older versions of __JAGS__ due to some changes in the ways that arrays are handled.
+
+We also need a few packages that are not included with the base installation of __R__, so we begin by installing them (if necessary) and then loading them.
+
+```{r load_pkgs, message = FALSE, warning = FALSE}
+if(!require("here")) {
+  install.packages("here")
+  library("here")
+}
+if(!require("readr")) {
+  install.packages("readr")
+  library("readr")
+}
+if(!require("rjags")) {
+  install.packages("rjags")
+  library("rjags")
+}
+if(!require("loo")) {
+  install.packages("loo")
+  library("loo")
+}
+if(!require("ggplot2")) {
+  install.packages("ggplot2")
+  library("ggplot2")
+}
+## set directory locations
+datadir <- here("data")
+jagsdir <- here("jags")
+analdir <- here("analysis")
+savedir <- here("analysis/cache")
+```
+
+We also need a couple of helper functions.
+
+```{r define_funcs}
+## better round
+Re2prec <- function(x, fun = "round", prec = 1) {
+  ## 'fun' can be "round", "floor", or "ceiling"
+  ## 'prec' is nearest value
+  ## (eg, 0.1 is to nearest tenth; 1 is to nearest integer)
+  if(prec<=0) { stop("\"prec\" cannot be less than or equal to 0") }
+  do.call(map,list(x/prec))*prec
+}
+
+## wrapper function to fit JAGS models & rearrange output
+fit_jags <- function(model, data, params, inits, ctrl, dir = jagsdir) {
+  jm <- jags.model(file.path(jagsdir, model),
+                   data,
+                   inits,
+                   ctrl$chains,
+                   ctrl$burn,
+                   quiet = TRUE)
+  return(coda.samples(jm, params, ctrl$length, ctrl$thin))
+}
+```
+
+# User inputs
+
+We begin by supplying values for the following parameters, which we need for model fitting and evaluation.
+
+```{r get_user_inputs}
+## first & last years of fish data
+yr_frst <- 1993
+yr_last <- 2016
+
+## min & max adult age classes
+age_min <- 2
+age_max <- 5
+## years (if any) of age-comp to skip; see below
+age_skip <- 0
+
+## number of years for run forecasts
+n_fore <- 0
+
+## upper threshold for Gelman & Rubin's potential scale reduction factor (Rhat).
+Rhat_thresh <- 1.1
+```
+
+Next we specify the names of three necessary data files containing the following information:
+ 
+ 1. observed total number of adult spawners (escapement) by year;
+ 2. observed total number of subyearling chinook smolts by year
+ 3. observed age composition of adult spawners by year;
+ 4. observed total harvest by year;
+
+```{r get_filenames}
+## 1. file with escapement data
+## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr
+fn_esc <- "skagit_chinook_esc.csv"
+
+## 2. file with smolt data
+## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr
+fn_smolt <- "skagit_chinook_smolt.csv"
+
+## 3. file with fry data
+## [n_yrs x 2] matrix of obs counts; 1st col is calendar yr
+fn_fry <- "skagit_chinook_fry.csv"
+
+## 4. file with age comp data
+## [n_yrs x (1+A)]; 1st col is calendar yr
+fn_age <- "skagit_chinook_age.csv"
+
+## 5. file with harvest data
+## [n_yrs x 2] matrix of obs catch; 1st col is calendar yr
+fn_harv <- "skagit_chinook_aeq_harvest.csv"
+```
+
+# Loading the fish data
+
+Here we load in the first three data files and do some simple calculations and manipulations. First the spawner data:
+
+```{r get_escapement_data}
+## escapement
+dat_esc <- read_csv(file.path(datadir, fn_esc))
+##
+dat_esc <- dat_esc[which(dat_esc$year %in% seq(yr_frst,yr_last,1)),]
+## years of data
+dat_yrs <- dat_esc$year
+## number of years of data
+n_yrs <- length(dat_yrs)
+## log of escapement
+ln_dat_esc <- c(log(dat_esc$escapement),rep(NA,n_fore))
+```
+
+Next the smolt production data:
+
+```{r get_smolt_data}
+## subyearling smolt abundance
+dat_smolt <- read_csv(file.path(datadir, fn_smolt))
+##
+dat_smolt <- dat_smolt[which(dat_smolt$year %in% seq(yr_frst,yr_last,1)),]
+
+## log of subyearling smolt abundance
+ln_dat_smolt <- c(log(dat_smolt$smolt),rep(NA,n_fore))
+```
+
+
+Next the estuarine fry production data (currently using poorly estimated numbers):
+
+```{r get_fry_data}
+## subyearling smolt abundance
+dat_fry <- read_csv(file.path(datadir, fn_fry))
+##
+dat_fry <- dat_fry[which(dat_fry$year %in% seq(yr_frst,yr_last,1)),]
+
+## log of subyearling smolt abundance
+ln_dat_fry <- c(log(dat_fry$fry),rep(NA,n_fore))
+```
+
+
+Next the age composition data:
+
+```{r get_age_data}
+## age comp data
+dat_age <- read_csv(file.path(datadir, fn_age))
+##
+dat_age <- dat_age[which(dat_age$year %in% seq(yr_frst,yr_last,1)),]
+## drop year col & first (age_min + age_skip) rows
+dat_age <- dat_age[-(1:(age_min+age_skip)),-1]
+## num of age classes
+A <- age_max - age_min + 1
+## add row(s) of NA's for forecast years
+if(n_fore > 0) {
+  dat_age <- rbind(dat_age,
+                   matrix(0, n_fore, A,
+                          dimnames = list(n_yrs+seq(n_fore),
+                                          colnames(dat_age))))
+}
+## total num of age obs by cal yr
+dat_age[,"sum"] <- apply(dat_age, 1, sum)
+## row indices for any years with no obs age comp
+idx_NA_yrs <- which(dat_age$sum<A, TRUE)
+## replace 0's in yrs w/o any obs with NA's
+dat_age[idx_NA_yrs,(1:A)] <- NA
+## change total in yrs w/o any obs from 0 to A to help dmulti()
+dat_age[idx_NA_yrs,"sum"] <- A
+## convert class
+dat_age <- as.matrix(dat_age)
+```
+
+And then the harvest data:
+
+```{r get_harvest}
+## harvest
+dat_harv <- read_csv(file.path(datadir, fn_harv))
+##
+dat_harv <- dat_harv[which(dat_harv$year %in% seq(yr_frst,yr_last,1)),]
+## drop year col & first age_max rows
+dat_harv <- c(dat_harv$tot_aeq, rep(0,n_fore))
+```
+
+# Loading the covariates
+
+Our analysis investigates the effects of 4 covariates on the population's instrinic growth rate:
+
+1. Maximum river discharge in winter;
+2. Minimum river discharge in summer;
+3. North Pacific Gyre Oscillation;
+
+All of the covariates are contained in the file `/data/skagit_sthd_covars.csv`. We will load and then standardize them to have zero-mean and unit-variance.
+
+```{r get_covariates}
+## covariate(s)
+dat_cvrs <- read_csv(file.path(datadir, "skagit_chinook_covars.csv"))
+## drop year col
+dat_cvrs <- dat_cvrs[,-1] 
+## transform the covariates to z-scores
+scl_cvrs <- as.matrix(scale(dat_cvrs)) 
+## total number of covariates
+n_cov <- dim(scl_cvrs)[2] 
+```
+
+# Specifying the models in JAGS
+
+Now we can specify the various models in JAGS. We fit a total of 4 different models, which we outline below, based on the 2 different process models with and without and covariates.
+
+## Models without covariates
+
+### Beverton-Holt
+
+```{r JAGS_EXP_BH_AR}
+cat("
+
+model {
+  
+  ##--------
+  ## PRIORS
+  ##--------
+  
+  ## 1. adult to smolt productivity
+  pas ~ dnorm(0,0.001) T(0,);
+  mu_pas <- log(pas)
+  
+  ## 2. smolt to fry  productivity
+  psf ~ dnorm(0,0.001) T(0,);
+  mu_BH_psf <- log(psf)
+
+  ## 3. fry to adult recruit productivity
+  pfa ~ dnorm(0,0.001) T(0,);
+  mu_pfa <- log(pfa)
+  E_pfa <- mu_pfa + sigma_r/(2 - 2*phi^2);
+    
+
+  ## strength of dens depend for smolt to fry stage
+  beta_inv ~ dnorm(0, 1e-9) T(0,);
+  beta <- 1/beta_inv;
+  
+  ## AR(1) coef for proc errors
+  phi ~ dunif(-0.999,0.999);
+  
+  ## process variance for smolt production model
+  sigma_s ~ dnorm(0, 2e-2) T(0,);
+  tau_s <- 1/sigma_s;
+  
+  ## process variance for fry production model
+  sigma_f ~ dnorm(0, 2e-2) T(0,);
+  tau_f <- 1/sigma_f;
+
+  ## process variance for adult recruits model
+  sigma_r ~ dnorm(0, 2e-2) T(0,);
+  tau_r <- 1/sigma_r;
+  
+  ## innovation in first year
+  innov_1 ~ dnorm(0,tau_r*(1-phi*phi));
+  
+  ## obs variance for spawners
+  tau_sp <- 1/sigma_sp;
+  sigma_sp ~ dnorm(0, 0.001) T(0,);
+  
+  ## obs variance for smolts
+  tau_sm <- 1/sigma_sm;
+  sigma_sm ~ dnorm(0, 0.001) T(0,);
+  
+  ## obs variance for fry
+  tau_fr <- 1/sigma_fr;
+  sigma_fr ~ dnorm(0, 0.001) T(0,);
+  
+  
+  ## unprojectable early recruits;
+  ## hyper mean across all popns
+  Rec_mu ~ dnorm(0,0.001);
+  ## hyper SD across all popns
+  Rec_sig ~ dunif(0,100);
+  ## precision across all popns
+  Rec_tau <- pow(Rec_sig,-2);
+  ## multipliers for unobservable total runs
+	ttl_run_mu ~ dunif(1,5);
+	ttl_run_tau ~ dunif(1,20);
+
+  ## get total cal yr returns for first age_min yrs
+  for(i in 1:(age_min+age_skip)) {
+		ln_tot_Run[i] ~ dnorm(ttl_run_mu*Rec_mu,Rec_tau/ttl_run_tau);
+		tot_Run[i] <- exp(ln_tot_Run[i]);
+  }
+  
+  ## maturity schedule
+  ## unif vec for Dirch prior
+  theta <- c(1,10,10,5)
+  ## hyper-mean for maturity
+  pi_eta ~ ddirch(theta);
+  ## hyper-prec for maturity
+  pi_tau ~ dnorm(0, 0.01) T(0,);
+  for(t in 1:(n_yrs-age_min+n_fore)) { pi_vec[t,1:A] ~ ddirch(pi_eta*pi_tau) }
+  
+  ## estimated harvest rate
+  for(t in 1:(n_yrs+n_fore)) { h_rate[t] ~ dunif(0,1) }
+
+  ##------------
+  ## LIKELIHOOD
+  ##------------
+  ## 1st brood yr requires different innovation
+  ## predicted adult recruits in BY t. Modelling as density dependent
+  ## relationship given that estuarine rearing stage is density dependent. 
+  
+  ln_pfa[1] <- mu_pfa; 
+  E_ln_Rec[1] <- ln_pfa[1] + tot_ln_fry[1] + phi*innov_1; 
+  tot_ln_Rec[1] ~ dnorm(E_ln_Rec[1],tau_r);
+  res_ln_Rec[1] <- tot_ln_Rec[1] - E_ln_Rec[1];
+  
+  ## median of total recruits
+  tot_Rec[1] <- exp(tot_ln_Rec[1]);
+  
+  ## survival = Rec/fry
+  ln_RS[1] <- tot_ln_Rec[1] - tot_ln_fry[1];
+  
+  ## brood-yr recruits by age
+  for(a in 1:A) {
+    Rec[1,a] <- tot_Rec[1] * pi_vec[1,a];
+  }
+  
+  ## brood years 2:(n_yrs-age_min)
+  for(t in 2:(n_yrs-age_min+n_fore)) {
+  
+  ## predicted adult recruits in BY t. Modelling as density dependent relationship given that       ## estuarine rearing stage is density dependent. 
+  
+  ln_pfa[t] <- mu_pfa; 
+  E_ln_Rec[t] <- ln_pfa[t] + tot_ln_fry[t] + phi*res_ln_Rec[t-1]; 
+  tot_ln_Rec[t] ~ dnorm(E_ln_Rec[t],tau_r);
+  res_ln_Rec[t] <- tot_ln_Rec[t] - E_ln_Rec[t];
+  
+  ## median of total recruits
+  tot_Rec[t] <- exp(tot_ln_Rec[t]);
+  
+  ## survival = Rec/Smolt
+  ln_RS[t] <- tot_ln_Rec[t] - tot_ln_fry[t];
+    ## brood-yr recruits by age
+    for(a in 1:A) {
+      Rec[t,a] <- tot_Rec[t] * pi_vec[t,a];
+    }
+  } ## end t loop over year
+  
+  ## get predicted calendar year returns by age
+  ## matrix Run has dim [(n_yrs-age_min) x A]
+  ## step 1: incomplete early broods
+  ## first cal yr of this grp is first brood yr + age_min + age_skip
+  for(i in 1:(age_max-age_min-age_skip)) {
+    ## projected recruits
+    for(a in 1:(i+age_skip)) {
+      Run[i,a] <- Rec[(age_skip+i)-a+1,a];
+    }
+    ## imputed recruits
+    for(a in (i+1+age_skip):A) {
+      lnRec[i,a] ~ dnorm(Rec_mu,Rec_tau);
+      Run[i,a] <- exp(lnRec[i,a]);
+    }
+    ## total run size
+    tot_Run[i+age_min+age_skip] <- sum(Run[i,1:A]);
+    ## predicted age-prop vec for multinom
+    for(a in 1:A) {
+      age_v[i,a] <- Run[i,a] / tot_Run[i+age_min];
+    }
+    ## multinomial for age comp
+    dat_age[i,1:A] ~ dmulti(age_v[i,1:A],dat_age[i,A+1]);
+    lp_age[i] <- logdensity.multi(dat_age[i,1:A],age_v[i,1:A],dat_age[i,A+1]);
+  }
+  
+  ## step 2: info from complete broods
+  ## first cal yr of this grp is first brood yr + age_max
+  for(i in (A-age_skip):(n_yrs-age_min-age_skip+n_fore)) {
+    for(a in 1:A) {
+      Run[i,a] <- Rec[(age_skip+i)-a+1,a];
+    }
+    ## total run size
+    tot_Run[i+age_min+age_skip] <- sum(Run[i,1:A]);
+    ## predicted age-prop vec for multinom
+    for(a in 1:A) {
+      age_v[i,a] <- Run[i,a] / tot_Run[i+age_min];
+    }
+    ## multinomial for age comp
+    dat_age[i,1:A] ~ dmulti(age_v[i,1:A],dat_age[i,A+1]);
+    lp_age[i] <- logdensity.multi(dat_age[i,1:A],age_v[i,1:A],dat_age[i,A+1]);
+  }
+  
+  ## get predicted calendar year spawners and smolts
+  ## first cal yr is first brood yr
+  for(t in 1:(n_yrs+n_fore)) {
+    ## obs model for spawners
+    # Sp[t] <- max(10,tot_Run[t] - dat_harv[t]);
+    est_harv[t] = h_rate[t] * tot_Run[t];
+    dat_harv[t] ~ dlnorm(log(est_harv[t]), 20);
+    Sp[t] = tot_Run[t] - est_harv[t];
+    ln_Sp[t] <- log(Sp[t]);
+    ln_dat_esc[t] ~ dnorm(ln_Sp[t], tau_sp);
+    lp_esc[t] <- logdensity.norm(ln_dat_esc[t],ln_Sp[t], tau_sp);
+    
+    ## 1. smolt production model including process and observation error
+    ln_pas[t] <- mu_pas;
+    E_ln_smolt[t] <- ln_pas[t] + ln_Sp[t]; 
+    tot_ln_smolt[t] ~ dnorm(E_ln_smolt[t],tau_s)
+    smolt[t] <- exp(tot_ln_smolt[t])
+    
+    ## model residuals
+    res_ln_smolt[t] <- tot_ln_smolt[t] - E_ln_smolt[t];
+    
+
+    ln_dat_smolt[t] ~ dnorm(tot_ln_smolt[t], tau_sm);
+    lp_smolt[t] <- logdensity.norm(ln_dat_smolt[t],tot_ln_smolt[t], tau_sm);
+    
+    ## survival = smolts/spawners
+    ln_ss[t] <- E_ln_smolt[t] - ln_Sp[t]
+    
+    ## 2. fry production model including process and observation error. Model     ##    is density dependant to account for estuarine rearing. 
+    ln_BH_psf[t] <- mu_BH_psf; 
+    E_ln_fry[t] <- ln_BH_psf[t] + tot_ln_smolt[t] - log(1 + beta*smolt[t]);
+    tot_ln_fry[t] ~ dnorm(E_ln_fry[t],tau_f);
+    ## median of fry recruits
+    fry[t] <- exp(tot_ln_fry[t]);
+    
+    ## model residuals
+    res_ln_fry[t] <- tot_ln_fry[t] - tot_ln_smolt[t];
+    
+    ## survival = fry/smolt
+    ln_sf[t] <-  tot_ln_fry[t] - E_ln_fry[t]
+    
+    ln_dat_fry[t] ~ dnorm(tot_ln_fry[t], tau_sm);
+    lp_fry[t] <- logdensity.norm(ln_dat_fry[t],tot_ln_fry[t], tau_fr);
+    
+   
+  }
+  
+} ## end model description
+
+", file=file.path(jagsdir, "IPM_BH_AR.txt"))
+```
+
+
+# Fitting the models
+
+Before fitting the model in JAGS, we need to specify:
+
+1. the data and indices that go into the model;
+2. the model parameters and states that we want JAGS to return;
+3. the MCMC control parameters.
+
+```{r jags_setup}
+## 1. Data to pass to JAGS:
+dat_jags <- list(dat_age = dat_age,
+                 ln_dat_esc = ln_dat_esc,
+                 ln_dat_smolt = ln_dat_smolt,
+                 ln_dat_fry = ln_dat_fry,
+                 dat_harv = dat_harv,
+                 A = A,
+                 age_min = age_min,
+                 age_max = age_max,
+                 age_skip = age_skip,
+                 n_yrs = n_yrs,
+                 n_fore = n_fore) 
+
+## 2. Model params/states for JAGS to return:
+##
+##    These are specific to the process model,
+##    so we define them in 'par_jags' below.
+
+## 3. MCMC control params:
+mcmc_ctrl <- list(
+  chains = 4,
+  length = 5e5,
+  burn = 2e5,
+  thin = 400
+)
+## total number of MCMC samples after burnin
+mcmc_samp <- mcmc_ctrl$length*mcmc_ctrl$chains/mcmc_ctrl$thin
+```
+
+```{r start_timer, include = FALSE}
+## start timer
+timer_start <- proc.time() 
+```
+
+## Models without covariates
+
+Please note that the following code takes ~80 min to run on a quad-core machine with 3.5 GHz Intel processors.
+
+```{r jags_IO_base}
+## empty list for fits
+
+## function for inits
+init_vals_AR <- function() {
+	list(pas = 8,psf = 2, pfa = 2,
+	     beta_inv = exp(mean(ln_dat_smolt, na.rm = TRUE)),
+	     pi_tau = 10,
+	     pi_eta = rep(1,A),
+	     pi_vec = matrix(c(0.020,0.219,0.581,0.179),
+	                     n_yrs-age_min+n_fore, A, 
+	                     byrow = TRUE),
+	     Rec_mu = log(1000),
+	     Rec_sig = 0.1,
+	     tot_ln_Rec = rep(log(1000), n_yrs - age_min + n_fore),
+	     tot_ln_smolt = rep(log(10000), n_yrs),
+	     tot_ln_fry = rep(log(10000), n_yrs),
+	     innov_1 = 0,
+	     phi = 0.5)
+}
+```
+
+
+### Beverton-Holt
+
+```{r fit_BH_base_show, eval = FALSE, message = FALSE, warning = FALSE, cache = FALSE}
+## params/states to return
+par_jags <- c("pas","mu_pas","psf","mu_BH_psf","pfa","mu_pfa","E_pfa",
+              "beta","Sp","smolt","tot_ln_smolt","fry","tot_ln_fry",
+              "Rec","tot_ln_Rec","ln_RS","pi_eta","pi_tau","sigma_r",
+              "sigma_sp","sigma_sm","res_ln_Rec","res_ln_smolt","res_ln_fry",
+              "ln_ss","ln_sf","lp_age","lp_esc","lp_smolt","lp_fry","phi")
+## fit model & save it
+mod_fit <- fit_jags("IPM_BH_AR.txt", dat_jags, par_jags, init_vals_AR, mcmc_ctrl)
+```
+
+```{r fit_BH_base, echo = FALSE, message = FALSE, warning = FALSE, cache = FALSE}
+## params/states to return
+par_jags <- c("pas","mu_pas","psf","mu_BH_psf","pfa","mu_pfa","E_pfa",
+              "beta","Sp","smolt","tot_ln_smolt","fry","tot_ln_fry",
+              "Rec","tot_ln_Rec","ln_RS","pi_eta","pi_tau","sigma_r",
+              "sigma_sp","sigma_sm","res_ln_Rec","res_ln_smolt","res_ln_fry",
+              "ln_ss","ln_sf","lp_age","lp_esc","lp_smolt","lp_fry","phi")
+
+## if file exists, load it
+if(file.exists(file.path(savedir, "fit_bh_base.rds"))) {
+  mod_fit <- readRDS(file.path(savedir, "fit_bh_base.rds"))
+} else { ## else, fit & save
+  mod_fit <- fit_jags("IPM_BH_AR.txt", dat_jags, par_jags, init_vals_AR, mcmc_ctrl)
+  saveRDS(mod_fit, file.path(savedir, "fit_bh_base.rds"))
+}
+```
+
+<!-- #### Convergence checks -->
+
+<!-- ```{r diag_BH} -->
+<!-- ## params of interest -->
+<!-- par_conv <- c("pas","psa","beta", -->
+<!--               "sigma_r","sigma_sp","sigma_sm","pi_tau",paste0("pi_eta[",seq(A-1),"]")) -->
+<!-- ## Gelman-Rubin -->
+<!-- gelman.diag(mod_fit[,par_conv]) -->
+
+<!-- ## autocorrelation -->
+<!-- t(round(autocorr.diag(mod_fit[,par_conv], -->
+<!--                       lags = seq(mcmc_ctrl$thin, 4*mcmc_ctrl$thin, mcmc_ctrl$thin), -->
+<!--                       relative=FALSE), 2)) -->
+<!-- ``` -->
+
